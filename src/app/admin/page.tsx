@@ -1,5 +1,96 @@
-export default function AdminDashbaord() {
+import {
+  Card,
+  CardDescription,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import db from "./db/db";
+import { formatCurrency, formatNumber } from "@/lib/formatters";
+
+async function getSalesData() {
+  const data = await db.order.aggregate({
+    _sum: { pricePaidInCents: true },
+    _count: true,
+  });
+
+  return {
+    amount: (data._sum.pricePaidInCents || 0) / 100,
+    numberOfSales: data._count,
+  };
+}
+
+async function getUserData() {
+  const [userCount, orderData] = await Promise.all([
+    db.user.count(),
+    db.order.aggregate({
+      _sum: { pricePaidInCents: true },
+    }),
+  ]);
+
+  return {
+    userCount,
+    averageValuePerUSer:
+      userCount === 0
+        ? 0
+        : (orderData._sum.pricePaidInCents || 0) / userCount / 100,
+  };
+}
+
+async function getProductData() {
+  const [activeCount, inactiveCount] = await Promise.all([
+    db.product.count({ where: { isAvailableForPurchase: true } }),
+    db.product.count({ where: { isAvailableForPurchase: false } }),
+  ]);
+  return {
+    activeCount,
+    inactiveCount,
+  };
+}
+
+export default async function AdminDashbaord() {
+  const [salesData, userData, productData] = await Promise.all([
+    getSalesData(),
+    getUserData(),
+    getProductData(),
+  ]);
   return (
-    <div className="grid gris-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    <div className="grid gris-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-5">
+      <DashboardCard
+        title={"Sales"}
+        subTitile={`${formatNumber(salesData.numberOfSales)} Orders`}
+        body={formatCurrency(salesData.amount)}
+      />
+      <DashboardCard
+        title={"Customers"}
+        subTitile={`${formatNumber(
+          userData.averageValuePerUSer
+        )} Average value`}
+        body={formatCurrency(userData.userCount)}
+      />
+      <DashboardCard
+        title={"Active Products"}
+        subTitile={`${formatNumber(productData.inactiveCount)} Inactive`}
+        body={formatNumber(productData.activeCount)}
+      />
+    </div>
+  );
+}
+
+type DashboardCardProps = {
+  title: string;
+  subTitile: string;
+  body: string;
+};
+
+function DashboardCard({ title, subTitile, body }: DashboardCardProps) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{subTitile}</CardDescription>
+      </CardHeader>
+      <CardContent>{body}</CardContent>
+    </Card>
   );
 }
